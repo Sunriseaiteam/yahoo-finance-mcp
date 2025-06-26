@@ -418,17 +418,12 @@ async def get_recommendations(ticker: str, recommendation_type: str, months_back
         return f"Error: getting recommendations for {ticker}: {e}"
 
 
-# if __name__ == "__main__":
-#     # Initialize and run the server
-#     print("Starting Yahoo Finance MCP server...")
-#     yfinance_server.run(transport="stdio")
 if __name__ == "__main__":
-    logger.info(f" MCP server started on port {os.getenv('PORT', 8080)}")
-    # Could also use 'sse' transport, host="0.0.0.0" required for Cloud Run.
-    asyncio.run(
-        yfinance_server.run_async(
-            transport="sse", 
-            host="0.0.0.0", 
-            port=os.getenv("PORT", 8080),
-        )
-    )
+    # Initialize and run the server
+    print("Starting Yahoo Finance MCP server...")
+    yfinance_server.run(transport="sse", 
+        host="0.0.0.0", 
+        port=os.getenv("PORT", 8081))    
+    
+    
+    
