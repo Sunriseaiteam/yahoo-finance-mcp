@@ -55,6 +55,7 @@ Available tools:
 - get_option_expiration_dates: Fetch the available options expiration dates for a given ticker symbol.
 - get_option_chain: Fetch the option chain for a given ticker symbol, expiration date, and option type.
 - get_recommendations: Get recommendations or upgrades/downgrades for a given ticker symbol from yahoo finance. You can also specify the number of months back to get upgrades/downgrades for, default is 12.
+- get_commodity_prices: Get commodity prices for a given commodity symbol from yahoo finance.
 """,
 )
 
@@ -417,6 +418,24 @@ async def get_recommendations(ticker: str, recommendation_type: str, months_back
         print(f"Error: getting recommendations for {ticker}: {e}")
         return f"Error: getting recommendations for {ticker}: {e}"
 
+
+@yfinance_server.tool(
+    name="get_commodity_prices",
+    description="""Get commodity prices for a given commodity symbol from yahoo finance.
+
+Args:
+    commodity_symbol: str
+        The commodity symbol to get prices for, e.g. "GC=F" (Needs to end with "=F")
+""",
+)
+async def get_commodity_prices(commodity_symbol: str) -> str:
+    """Get commodity prices for a given commodity symbol"""
+    try:
+        commodity = yf.Ticker(commodity_symbol)
+        return commodity.history(period="1mo", interval="1d").to_json(orient="records", date_format="iso")
+    except Exception as e:
+        print(f"Error: getting commodity prices for {commodity_symbol}: {e}")
+        return f"Error: getting commodity prices for {commodity_symbol}: {e}"
 
 if __name__ == "__main__":
     # Initialize and run the server
