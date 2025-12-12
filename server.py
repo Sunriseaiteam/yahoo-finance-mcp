@@ -9,8 +9,24 @@ import logging
 import os
 from fastmcp import FastMCP
 
-logger = logging.getLogger(__name__)
+# =============================================================================
+# Logging Configuration - Suppress noisy loggers
+# =============================================================================
 logging.basicConfig(format="[%(levelname)s]: %(message)s", level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Suppress noisy third-party loggers
+NOISY_LOGGERS = [
+    "httpx",
+    "httpcore", 
+    "urllib3",
+    "yfinance",
+    "peewee",
+    "asyncio",
+    "anyio",
+]
+for noisy_logger in NOISY_LOGGERS:
+    logging.getLogger(noisy_logger).setLevel(logging.WARNING)
 
 
 # Define an enum for the type of financial statement
@@ -37,9 +53,10 @@ class RecommendationType(str, Enum):
     upgrades_downgrades = "upgrades_downgrades"
 
 
-# Initialize FastMCP server
+# Initialize FastMCP server (stateless for Cloud Run scalability)
 yfinance_server = FastMCP(
     "yfinance",
+    stateless_http=True,  # No session state - works without session affinity
     instructions="""
 # Yahoo Finance MCP Server
 
@@ -439,10 +456,12 @@ async def get_commodity_prices(commodity_symbol: str) -> str:
 
 if __name__ == "__main__":
     # Initialize and run the server
-    print("Starting Yahoo Finance MCP server...")
-    yfinance_server.run(transport="sse", 
+    print("Starting Yahoo Finance MCP server (Streamable HTTP)...")
+    yfinance_server.run(
+        transport="streamable-http",  # Stateless transport for Cloud Run
         host="0.0.0.0", 
-        port=os.getenv("PORT", 8081))    
+        port=os.getenv("PORT", 8081)
+    )    
     
     
     
