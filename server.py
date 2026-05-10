@@ -454,6 +454,98 @@ async def get_commodity_prices(commodity_symbol: str) -> str:
         print(f"Error: getting commodity prices for {commodity_symbol}: {e}")
         return f"Error: getting commodity prices for {commodity_symbol}: {e}"
 
+def _compute_screening_metrics(symbol: str) -> dict:
+    """Fetch core screening metrics for a single ticker."""
+    try:
+        company = yf.Ticker(symbol)
+        info = company.info or {}
+
+        # Revenue growth from income statement
+        rev_yoy, rev_cagr_3y = None, None
+        try:
+            inc = company.income_stmt
+            if inc is not None and not inc.empty:
+                for name in ["TotalRevenue", "Total Revenue"]:
+                    if name in inc.index:
+                        vals = [float(v) for v in inc.loc[name].values if v is not None and not pd.isna(v) and float(v) > 0]
+                        if len(vals) >= 2:
+                            rev_yoy = round((vals[0] / vals[1]) - 1, 4)
+                        if len(vals) >= 4:
+                            rev_cagr_3y = round((vals[0] / vals[3]) ** (1 / 3) - 1, 4)
+                        break
+        except Exception:
+            pass
+
+        # Debt-to-equity from balance sheet
+        de_ratio = None
+        try:
+            bs = company.balance_sheet
+            if bs is not None and not bs.empty:
+                debt, equity = None, None
+                for n in ["TotalDebt", "Total Debt"]:
+                    if n in bs.index:
+                        v = bs.iloc[:, 0].get(n)
+                        if v is not None and not pd.isna(v):
+                            debt = float(v)
+                        break
+                for n in ["StockholdersEquity", "Stockholders Equity"]:
+                    if n in bs.index:
+                        v = bs.iloc[:, 0].get(n)
+                        if v is not None and not pd.isna(v):
+                            equity = float(v)
+                        break
+                if debt and equity and equity != 0:
+                    de_ratio = round(debt / equity, 2)
+        except Exception:
+            pass
+
+        return {
+            "name": info.get("shortName"),
+            "sector": info.get("sector"),
+            "mkt_cap": info.get("marketCap"),
+            "price": info.get("currentPrice"),
+            "pe": info.get("trailingPE"),
+            "fwd_pe": info.get("forwardPE"),
+            "div_yield": info.get("dividendYield"),
+            "payout_ratio": info.get("payoutRatio"),
+            "rev_yoy": rev_yoy,
+            "rev_cagr_3y": rev_cagr_3y,
+            "de_ratio": de_ratio,
+            "analyst_rating": info.get("recommendationKey"),
+            "analyst_target": info.get("targetMeanPrice"),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+@yfinance_server.tool(
+    name="screen_stocks",
+    description="""Screen multiple stocks at once. Returns pre-computed screening metrics for up to 25 tickers in one call.
+
+Per ticker returns: name, sector, market_cap, price, P/E, forward P/E, dividend yield, payout ratio,
+revenue growth YoY, revenue CAGR 3yr, debt-to-equity, analyst rating, analyst target price.
+
+Args:
+    tickers: str
+        Comma-separated ticker symbols, e.g. "CSL.AX,RMD.AX,PME.AX"
+""",
+)
+async def screen_stocks(tickers: str) -> str:
+    """Screen multiple stocks — returns compact pre-computed metrics."""
+    ticker_list = [t.strip() for t in tickers.split(",") if t.strip()]
+    if len(ticker_list) > 25:
+        return "Error: maximum 25 tickers per call."
+
+    semaphore = asyncio.Semaphore(5)
+
+    async def _fetch_one(symbol: str) -> tuple[str, dict]:
+        async with semaphore:
+            return symbol, await asyncio.to_thread(_compute_screening_metrics, symbol)
+
+    fetch_results = await asyncio.gather(*[_fetch_one(s) for s in ticker_list])
+    return json.dumps({s: d for s, d in fetch_results}, default=str)
+
+
 if __name__ == "__main__":
     # Initialize and run the server
     print("Starting Yahoo Finance MCP server (Streamable HTTP)...")
